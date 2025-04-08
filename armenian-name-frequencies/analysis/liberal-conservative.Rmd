@@ -1,0 +1,66 @@
+---
+title: "Naming Patterns and Societal Values in Armenia"
+author: "Habet Madoyan"
+date: "2025-04-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, warning = F, message = F)
+rm(list=ls())
+library(dplyr)
+library(ggplot2)
+```
+
+
+```{r read_data}
+names_elections = read.csv("../data/names_elections.csv")
+names_official = read.csv("../data/names_official.csv")
+```
+
+
+There will always be debates about the value system of any society. We often assume that society as a whole shares our values—or at least that a significant portion of it does. However, this generalization may not always hold true.
+
+So, how can we measure a society’s value system? Various approaches exist. Surveys, for example, have helped identify key dimensions of societal values and positioned countries or nations along those continuums.
+
+One of the most widely studied dimensions is the liberal–conservative spectrum. Interestingly, one way to gauge where a society stands on this spectrum is by examining the popularity of baby names. The assumption is that as the percentage of children given the most popular name increases, the society becomes more conservative. Liberal parents tend to choose unique or unconventional names for their children, while conservative parents are more likely to choose traditional or widely accepted names. (See, for example: https://www.livescience.com/37196-politics-baby-names.html).
+
+
+
+To explore this pattern in Armenia, I used two datasets:
+
+1. Armenian Election Dataset (2007 elections): This includes names of registered voters, with the most recent birth year being 1989.
+
+2. Official Statistics from the Statistical Committee of the Republic of Armenia: This dataset lists the 50 most popular names by sex.
+
+While I acknowledge the limitations of the election dataset—particularly its age and potential biases—it remains the most comprehensive dataset available at the moment.
+
+As a proxy for conservatism, I use the percentage of individuals bearing the most popular name in a given year. This metric could be extended in several ways, such as using the combined percentage of the top N names or applying concentration indices from economics, like the Herfindahl–Hirschman Index.
+
+I will leave the interpretations to you.
+
+```{r}
+names_elections_top = names_elections %>% 
+  group_by(year) %>% 
+  mutate(percentage = n/total) %>% 
+  slice_max(percentage,n = 1)
+
+ggplot(names_elections_top, aes(x = year, y = percentage)) + geom_point() + 
+  geom_line() + scale_y_continuous(limits = c(0,NA), labels = scales::label_percent(accuracy = 1)) + 
+  labs(title = "Share of the Most Popular Name by Year (Election Dataset)", y="", x = "Year of birth")
+
+```
+
+The same metric but using official statistics for the recent years
+
+```{r}
+names_official_top  = names_official %>% 
+  mutate(percentage = count/total_newborns) %>% 
+  group_by(year) %>% 
+  slice_max(percentage,n = 1)  
+
+ggplot(names_official_top, aes(x = year, y = percentage)) + geom_point() + 
+  geom_line() + scale_y_continuous(limits = c(0,NA), labels = scales::label_percent(accuracy = 1)) + 
+  labs(title = "Share of the Most Popular Name by Year (Official Statistics)", y="", x = "Year of birth")
+```
+
