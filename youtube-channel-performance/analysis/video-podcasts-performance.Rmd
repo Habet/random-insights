@@ -1,0 +1,145 @@
+---
+title: "Measuring the True Performance of YouTube(and not only) Podcasts"
+author: "Habet Madoyan"
+date: "2025-08-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+library(broom)
+library(knitr)
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+```
+
+
+
+
+```{r}
+load("episodes.rda")
+```
+
+We live in what could be called the **era of YouTube podcasts**. While producing a podcast has become highly affordable, the real challenge lies in identifying which episodes genuinely resonate with audiences and which underperform.
+
+Evaluating success based solely on raw likes or views can be misleading, since these metrics are strongly shaped by both the publication date and the channel’s popularity at the time of release Older episodes will naturally accumulate more likes sdue to their longer presence online. Early episodes often underperform because the channel was less popular back then, while later episodes may show inflated numbers just because your audience grew—not necessarily because the content was better.
+
+How, then, can we distinguish true over- and under-performers? A practical solution is to construct a regression model that predicts the expected number of likes. Episodes with **positive residuals** (actual likes above predicted) are overperforming, while those with **negative residuals** are underperforming.
+
+A simple model needs only two predictors:
+
+- **Number of days since publishing** (episode age)  
+- **Subscribers at the time of posting** (audience size)
+
+Because likes tend to grow *multiplicatively*—more subscribers make likes grow faster, and the longer a video is online, the more this growth compounds—it’s natural to use a **log-linear regression**:
+
+
+$$
+\log(\text{likes}) = \beta_0 + \beta_1 \cdot \log(\text{days since posting}) + \beta_2 \cdot \log(\text{subscribers at posting}) + \varepsilon
+$$
+
+
+From this model, the **residuals** become your success score. A positive residual means the video attracted more likes than expected given its age and audience size; a negative residual means it underperformed. Since the model is built in log scale, exponentiating the residuals gives you an easy-to-interpret score:
+
+- **> 1** = better than expected  
+- **< 1** = worse than expected
+
+
+Lets build the model first and interpret the coefficients 
+
+We model the number of likes as a log–linear regression:
+
+$$
+\log(\text{likes}) = \beta_0 + \beta_1 \cdot \log(\text{subs\_at\_posting}) + \beta_2 \cdot \log(\text{age\_days}) + \varepsilon
+$$
+
+
+```{r}
+model_likes <- lm(log(likes_today) ~ log(subs_at_posting) + log(age_days), data = episodes)
+tidy(model_likes) %>%
+  kable(digits = 3, caption = "Log-Linear Regression: Predicting Likes")
+```
+
+
+
+This specification means the coefficients can be interpreted as **elasticities** (percent changes):
+
+- **$\beta_1 = 0.678$ (p = 0.045)**  
+  A 1% increase in subscribers at the time of posting is associated with about a **0.68% increase in likes**.  
+  This effect is statistically significant at the 5% level.
+
+- **$\beta_2 = 0.467$ (p < 0.001)**  
+  A 1% increase in the age of the video (days since publishing) is associated with about a **0.47% increase in likes**.  
+  This effect is highly significant, showing that older videos gather more likes, though at a diminishing rate.
+
+- **$\beta_0 = -1.47$ (p = 0.63)**  
+  The intercept is not statistically significant and does not have a direct interpretation.
+
+
+  The model explains about 32% of the variation in likes, suggesting that while subscriber base and video age are important, other factors (such as topic, guest, or thumbnail quality) also matter.
+
+
+Both $\beta_1$ and $\beta_2$ are positive and significant, showing that likes increase with both subscriber base at posting and video age. The elasticities being less than 1 indicate **diminishing returns**: likes grow with these factors, but at a slower-than-proportional rate.
+
+
+## Predictions and visualizations
+
+Now lets go with predicting the residuals, and finding out the more and less successfull episodes
+
+
+```{r}
+episodes$log_likes_fitted <- fitted(model_likes)
+episodes$success_multiplier <- residuals(model_likes) %>% exp()
+episodes = episodes %>% mutate(success_binary = ifelse(success_multiplier > 1, "Better than expected", "Worst than expected"))
+```
+
+#### Visualization 1: 
+
+If the episode is above the $45^\circ$ it is overperforming, if under the line it is underperforming
+
+```{r}
+
+
+ggplot(episodes, aes(x = expected_likes, y = likes_today, color = success_binary)) +
+  geom_point(size = 2, alpha = 0.8) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2) +
+  scale_x_log10() + scale_y_log10() +
+  labs(x = "Expected likes (log scale)", y = "Actual likes (log scale)", color = NULL,
+       title = "Actual vs Expected Likes per Episode (Adjusted for Subscribers and Age)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+
+#### Visualizaiton 2:
+
+Overperforming and underperforming episodes
+
+
+```{r ffig.height=14}
+episodes %>% mutate(episode_id = paste0("Ep.", episode_id)) %>% 
+ggplot() +
+  geom_col(mapping = aes(x = reorder(label, success_multiplier), y = success_multiplier, fill = success_binary)) +
+  coord_flip() +
+  labs(x = "", y = "Success multiplier (actual / expected)", title = "Which Episodes Over- or Under-Performed?") +
+  theme_minimal() +
+  guides(fill = "none")
+```
+
+
+
+## Implications for Creators
+
+This modeling approach gives creators a more reliable way to evaluate content performance. By adjusting for audience size and video age, it highlights episodes that truly resonated with viewers, not just those that benefited from timing or channel growth. Creators can use this measure to:
+
+- Identify content themes or formats that consistently outperform expectations.
+- Recognize underperforming episodes early and refine strategy accordingly.
+- Benchmark success fairly across the lifetime of the channel, ensuring newer videos get a fair evaluation.
+
+In short, instead of chasing raw likes, creators gain a data-driven lens for making content and marketing decisions.
+
+## Conclusion
+
+Raw counts of likes or views tell only part of the story. By controlling for the natural effects of audience size and time since publishing, regression-based residual scores offer a fairer and more actionable measure of podcast performance. This method reveals which episodes genuinely connected with audiences and which lagged behind expectations. For creators, it provides a roadmap to refine content strategy, focus on what works, and build stronger engagement with a growing community.
+
